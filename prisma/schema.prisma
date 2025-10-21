@@ -1,0 +1,192 @@
+// Trading Simulator - Prisma Schema
+// Database schema for paper trading application with AI coaching
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  passwordHash  String?   @map("password_hash") @db.VarChar(255) // Nullable for OAuth users
+  name          String    @db.VarChar(255)
+  oauthProvider String?   @map("oauth_provider") @db.VarChar(50) // 'google', 'github', etc.
+  oauthId       String?   @map("oauth_id") @db.VarChar(255)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  lastLogin     DateTime? @map("last_login") @db.Timestamp(6)
+  isActive      Boolean   @default(true) @map("is_active")
+
+  // Relations
+  portfolio     Portfolio?
+  trades        Trade[]
+  aiFeedback    AiFeedback[]
+  conversations Conversation[]
+
+  @@index([email])
+  @@index([oauthProvider, oauthId])
+  @@map("users")
+}
+
+// ============================================
+// PORTFOLIO MANAGEMENT
+// ============================================
+
+model Portfolio {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @unique @map("user_id") @db.Uuid
+  cash       Decimal  @default(100000.00) @db.Decimal(15, 2)
+  invested   Decimal  @default(0.00) @db.Decimal(15, 2)
+  totalValue Decimal  @default(100000.00) @map("total_value") @db.Decimal(15, 2)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holdings Holding[]
+  trades   Trade[]
+
+  @@index([userId])
+  @@map("portfolios")
+}
+
+model Holding {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  portfolioId  String   @map("portfolio_id") @db.Uuid
+  symbol       String   @db.VarChar(10)
+  quantity     Int
+  avgPrice     Decimal  @map("avg_price") @db.Decimal(15, 2)
+  currentPrice Decimal? @map("current_price") @db.Decimal(15, 2)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, symbol])
+  @@index([portfolioId])
+  @@index([symbol])
+  @@map("holdings")
+}
+
+// ============================================
+// TRADING
+// ============================================
+
+model Trade {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String    @map("user_id") @db.Uuid
+  portfolioId           String    @map("portfolio_id") @db.Uuid
+  symbol                String    @db.VarChar(10)
+  quantity              Int
+  price                 Decimal   @db.Decimal(15, 2)
+  total                 Decimal   @db.Decimal(15, 2)
+  type                  TradeType
+  timestamp             DateTime  @default(now()) @db.Timestamp(6)
+
+  // Portfolio snapshot
+  cashBefore            Decimal?  @map("cash_before") @db.Decimal(15, 2)
+  cashAfter             Decimal?  @map("cash_after") @db.Decimal(15, 2)
+  portfolioValueBefore  Decimal?  @map("portfolio_value_before") @db.Decimal(15, 2)
+  portfolioValueAfter   Decimal?  @map("portfolio_value_after") @db.Decimal(15, 2)
+
+  // Relations
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolio  Portfolio    @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  aiFeedback AiFeedback?
+
+  @@index([userId])
+  @@index([symbol])
+  @@index([timestamp(sort: Desc)])
+  @@index([userId, timestamp(sort: Desc)])
+  @@map("trades")
+}
+
+enum TradeType {
+  buy
+  sell
+}
+
+// ============================================
+// AI COACHING & FEEDBACK
+// ============================================
+
+model AiFeedback {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tradeId        String   @unique @map("trade_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  overall        String?  @db.Text
+  strengths      Json?    @db.JsonB // Array of strings
+  improvements   Json?    @db.JsonB // Array of strings
+  riskLevel      String?  @map("risk_level") @db.VarChar(20)
+  educationalTip String?  @map("educational_tip") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // Relations
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tradeId])
+  @@index([userId])
+  @@map("ai_feedback")
+}
+
+model Conversation {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([userId])
+  @@map("conversations")
+}
+
+model Message {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId   String   @map("conversation_id") @db.Uuid
+  role             Role
+  content          String   @db.Text
+  tradeSuggestions Json?    @map("trade_suggestions") @db.JsonB // Array of trade suggestion objects
+  timestamp        DateTime @default(now()) @db.Timestamp(6)
+
+  // Relations
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, timestamp])
+  @@map("messages")
+}
+
+enum Role {
+  user
+  assistant
+}
+
+// ============================================
+// MARKET DATA CACHE (Optional - can use Redis)
+// ============================================
+
+model MarketDataCache {
+  symbol        String   @id @db.VarChar(10)
+  price         Decimal  @db.Decimal(15, 2)
+  change        Decimal? @db.Decimal(15, 2)
+  changePercent Decimal? @map("change_percent") @db.Decimal(8, 4)
+  volume        BigInt?
+  cachedAt      DateTime @default(now()) @map("cached_at") @db.Timestamp(6)
+  expiresAt     DateTime @map("expires_at") @db.Timestamp(6)
+
+  @@index([expiresAt])
+  @@map("market_data_cache")
+}
