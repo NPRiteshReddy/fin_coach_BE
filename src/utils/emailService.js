@@ -1,18 +1,24 @@
-const { Resend } = require('resend');
+const brevo = require('@getbrevo/brevo');
 
 /**
- * Create Resend client
- * Uses Resend API (HTTP-based, not SMTP) which works on all cloud platforms
+ * Create Brevo API client
+ * Uses Brevo (formerly Sendinblue) HTTP API - works on all cloud platforms
  */
-const createResendClient = () => {
-  // Check if Resend API key is configured
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('⚠️  RESEND_API_KEY not configured. Email sending will be simulated.');
-    console.warn('Get your API key at: https://resend.com/api-keys');
+const createBrevoClient = () => {
+  // Check if Brevo API key is configured
+  if (!process.env.BREVO_API_KEY) {
+    console.warn('⚠️  BREVO_API_KEY not configured. Email sending will be simulated.');
+    console.warn('Get your API key at: https://app.brevo.com/settings/keys/api');
     return null;
   }
 
-  return new Resend(process.env.RESEND_API_KEY);
+  const apiInstance = new brevo.TransactionalEmailsApi();
+  apiInstance.setApiKey(
+    brevo.TransactionalEmailsApiApiKeys.apiKey,
+    process.env.BREVO_API_KEY
+  );
+
+  return apiInstance;
 };
 
 /**
@@ -25,12 +31,6 @@ const isGmailAddress = (email) => {
 };
 
 /**
- * Get the allowed recipient email for Resend test mode
- * When using onboarding@resend.dev, you can only send to the email used to create the Resend account
- */
-const RESEND_TEST_EMAIL = 'iriteshreddy@gmail.com';
-
-/**
  * Send newsletter email
  * @param {string} recipientEmail - Recipient's email address (must be Gmail)
  * @param {object} newsletterData - Newsletter content
@@ -41,14 +41,14 @@ const sendNewsletterEmail = async (recipientEmail, newsletterData) => {
     throw new Error('Only Gmail addresses are supported. Please enter a valid @gmail.com address.');
   }
 
-  const resend = createResendClient();
+  const brevoClient = createBrevoClient();
 
-  // If no Resend client (missing API key), simulate sending
-  if (!resend) {
+  // If no Brevo client (missing API key), simulate sending
+  if (!brevoClient) {
     console.log(`📧 [SIMULATED] Email would be sent to: ${recipientEmail}`);
     return {
       success: true,
-      message: 'Email simulated successfully (RESEND_API_KEY not configured)',
+      message: 'Email simulated successfully (BREVO_API_KEY not configured)',
       simulated: true
     };
   }
@@ -204,27 +204,25 @@ const sendNewsletterEmail = async (recipientEmail, newsletterData) => {
 </html>
   `;
 
-  // Send email via Resend API
+  // Create email using Brevo API
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+  sendSmtpEmail.sender = {
+    name: 'Fin Coach Newsletter',
+    email: 'iriteshreddy@gmail.com'
+  };
+  sendSmtpEmail.to = [{ email: recipientEmail }];
+  sendSmtpEmail.subject = `📈 ${newsletterData.headline}`;
+  sendSmtpEmail.htmlContent = emailHTML;
+
   try {
-    const { data, error } = await resend.emails.send({
-      from: 'Fin Coach Newsletter <onboarding@resend.dev>',
-      to: recipientEmail,
-      subject: `📈 ${newsletterData.headline}`,
-      html: emailHTML,
-    });
-
-    if (error) {
-      console.error('❌ Resend API error:', error);
-      throw new Error(`Resend API error: ${error.message}`);
-    }
-
+    const data = await brevoClient.sendTransacEmail(sendSmtpEmail);
     console.log(`✅ Email sent successfully to ${recipientEmail}`);
-    console.log(`Email ID: ${data.id}`);
+    console.log(`Message ID: ${data.messageId}`);
 
     return {
       success: true,
       message: 'Email sent successfully',
-      emailId: data.id
+      messageId: data.messageId
     };
   } catch (error) {
     console.error('❌ Error sending email:', error);
