@@ -374,7 +374,15 @@ const sendNewsletter = async (req, res, next) => {
       });
     }
 
-    next(error);
+    // Return detailed error for email sending failures
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'EMAIL_SEND_FAILED',
+        message: error.message || 'Failed to send email. Please check your email configuration.',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      }
+    });
   }
 };
 
