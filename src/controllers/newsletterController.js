@@ -393,7 +393,7 @@ const sendNewsletterValidation = [
   body('email')
     .isEmail()
     .withMessage('Valid email address is required')
-    .normalizeEmail(),
+    .trim(),  // Only trim whitespace, don't normalize (keeps email exactly as entered)
   body('newsletterData')
     .exists()
     .withMessage('Newsletter data is required')

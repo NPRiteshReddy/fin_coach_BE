@@ -25,6 +25,12 @@ const isGmailAddress = (email) => {
 };
 
 /**
+ * Get the allowed recipient email for Resend test mode
+ * When using onboarding@resend.dev, you can only send to the email used to create the Resend account
+ */
+const RESEND_TEST_EMAIL = 'iriteshreddy@gmail.com';
+
+/**
  * Send newsletter email
  * @param {string} recipientEmail - Recipient's email address (must be Gmail)
  * @param {object} newsletterData - Newsletter content
