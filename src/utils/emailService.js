@@ -1,27 +1,18 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 /**
- * Create email transporter
- * Supports Gmail SMTP or any custom SMTP server
+ * Create Resend client
+ * Uses Resend API (HTTP-based, not SMTP) which works on all cloud platforms
  */
-const createTransporter = () => {
-  // Check if email credentials are configured
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
-    console.warn('⚠️  Email credentials not configured. Email sending will be simulated.');
+const createResendClient = () => {
+  // Check if Resend API key is configured
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('⚠️  RESEND_API_KEY not configured. Email sending will be simulated.');
+    console.warn('Get your API key at: https://resend.com/api-keys');
     return null;
   }
 
-  // Create transporter with Gmail SMTP
-  // For Gmail: You need to enable "App Passwords" in Google Account settings
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD
-    }
-  });
-
-  return transporter;
+  return new Resend(process.env.RESEND_API_KEY);
 };
 
 /**
@@ -44,14 +35,14 @@ const sendNewsletterEmail = async (recipientEmail, newsletterData) => {
     throw new Error('Only Gmail addresses are supported. Please enter a valid @gmail.com address.');
   }
 
-  const transporter = createTransporter();
+  const resend = createResendClient();
 
-  // If no transporter (missing credentials), simulate sending
-  if (!transporter) {
+  // If no Resend client (missing API key), simulate sending
+  if (!resend) {
     console.log(`📧 [SIMULATED] Email would be sent to: ${recipientEmail}`);
     return {
       success: true,
-      message: 'Email simulated successfully (no SMTP configured)',
+      message: 'Email simulated successfully (RESEND_API_KEY not configured)',
       simulated: true
     };
   }
@@ -207,23 +198,27 @@ const sendNewsletterEmail = async (recipientEmail, newsletterData) => {
 </html>
   `;
 
-  // Email options
-  const mailOptions = {
-    from: `"Fin Coach Newsletter" <${process.env.EMAIL_USER}>`,
-    to: recipientEmail,
-    subject: `📈 ${newsletterData.headline}`,
-    html: emailHTML
-  };
-
+  // Send email via Resend API
   try {
-    const info = await transporter.sendMail(mailOptions);
+    const { data, error } = await resend.emails.send({
+      from: 'Fin Coach Newsletter <onboarding@resend.dev>',
+      to: recipientEmail,
+      subject: `📈 ${newsletterData.headline}`,
+      html: emailHTML,
+    });
+
+    if (error) {
+      console.error('❌ Resend API error:', error);
+      throw new Error(`Resend API error: ${error.message}`);
+    }
+
     console.log(`✅ Email sent successfully to ${recipientEmail}`);
-    console.log(`Message ID: ${info.messageId}`);
+    console.log(`Email ID: ${data.id}`);
 
     return {
       success: true,
       message: 'Email sent successfully',
-      messageId: info.messageId
+      emailId: data.id
     };
   } catch (error) {
     console.error('❌ Error sending email:', error);
